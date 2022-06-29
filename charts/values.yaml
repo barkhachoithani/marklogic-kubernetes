@@ -1,7 +1,16 @@
 # Default values for marklogic server.
 
-# Number of Marklogic nodes
+
+
+# deployment type
+deploymentType: combined
+
+# Number of Marklogic combined E/D nodes
 replicaCount: 1
+
+# Number of 
+eNodeCount: 1
+dNodeCount: 1
 
 # Marklogic image parameters
 image:

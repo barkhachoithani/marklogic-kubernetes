@@ -1,21 +1,24 @@
-{{- if ne .Values.deploymentType "separate" }}
+{{- if eq .Values.deploymentType "separate" }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "marklogic.fullname" . }}
+  name: {{ include "marklogic.fullname" . }}-dnode
   namespace: {{ .Release.Namespace }}
   labels:
+    app.kubernetes.io/component: marklogic-dnode
     {{- include "marklogic.labels" . | nindent 4 }}
 spec:
   serviceName: {{ include "marklogic.headlessServiceName" . }}
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ .Values.dNodeCount }}
   selector:
     matchLabels:
       {{- include "marklogic.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: marklogic-dnode
   template:
     metadata:
       labels:
         {{- include "marklogic.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: marklogic-dnode
     spec:
       serviceAccountName: {{ include "marklogic.serviceAccountName" . }}
       {{- with .Values.affinity }}
@@ -78,6 +81,22 @@ spec:
                     http://$HOSTNAME:8001/admin/v1/instance-admin
                 sleep 10s
 
+                if [ "$DEPLOYMENT_TYPE" == "separate" ]; then
+                  echo "Deployment type is separate E/D node"
+
+                  if [ "$HOSTNAME" == "$ML_BOOTSTRAP_HOST" ]; then
+                    $AUTH_CURL -X POST  -H "Content-type: application/json" \
+                    -d '{"group-name":"ENode"}' http://localhost:8002/manage/v2/groups
+                    sleep 5s
+
+                    $AUTH_CURL -X PUT -H "Content-type: application/json" \
+                    -d '{"group-name":"DNode"}' http://localhost:8002/manage/v2/groups/Default/properties
+                    sleep 5s
+                    
+                  fi
+          
+                fi
+
                 # for EA1 release, disable turning on XDQP by default.
                 # Turn on XDQP encryption via CMA
                 # $AUTH_CURL -X POST -H 'Content-Type: application/json' \
@@ -90,7 +109,7 @@ spec:
                   joiner=$HOSTNAME
                   cluster="$ML_BOOTSTRAP_HOST"
                   $AUTH_CURL -o host.xml -X GET -H "Accept: application/xml" http://${joiner}:8001/admin/v1/server-config
-                  $AUTH_CURL -X POST -d "group=Default" --data-urlencode "server-config@./host.xml" -H "Content-type: application/x-www-form-urlencoded" -o cluster.zip http://${cluster}:8001/admin/v1/cluster-config
+                  $AUTH_CURL -X POST -d "group=DNode" --data-urlencode "server-config@./host.xml" -H "Content-type: application/x-www-form-urlencoded" -o cluster.zip http://${cluster}:8001/admin/v1/cluster-config
 
                   sleep 10s
 

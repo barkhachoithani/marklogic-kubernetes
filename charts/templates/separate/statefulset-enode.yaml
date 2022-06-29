@@ -1,21 +1,24 @@
-{{- if ne .Values.deploymentType "separate" }}
+{{- if eq .Values.deploymentType "separate" }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "marklogic.fullname" . }}
+  name: {{ include "marklogic.fullname" . }}-enode
   namespace: {{ .Release.Namespace }}
   labels:
+    app.kubernetes.io/component: marklogic-enode
     {{- include "marklogic.labels" . | nindent 4 }}
 spec:
   serviceName: {{ include "marklogic.headlessServiceName" . }}
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ .Values.eNodeCount }}
   selector:
     matchLabels:
       {{- include "marklogic.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: marklogic-enode
   template:
     metadata:
       labels:
         {{- include "marklogic.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: marklogic-enode
     spec:
       serviceAccountName: {{ include "marklogic.serviceAccountName" . }}
       {{- with .Values.affinity }}
@@ -76,7 +79,7 @@ spec:
                     --data "admin-username=$ML_ADMIN_USER" --data "admin-password=$ML_ADMIN_PASS" \
                     --data "realm=public" \
                     http://$HOSTNAME:8001/admin/v1/instance-admin
-                sleep 10s
+                sleep 30s
 
                 # for EA1 release, disable turning on XDQP by default.
                 # Turn on XDQP encryption via CMA
@@ -86,11 +89,12 @@ spec:
 
                 # Join Cluster
                 if [ "$HOSTNAME" != "$ML_BOOTSTRAP_HOST" ]; then
+                  sleep 60s
                   echo "### joining cluster ###"
                   joiner=$HOSTNAME
                   cluster="$ML_BOOTSTRAP_HOST"
                   $AUTH_CURL -o host.xml -X GET -H "Accept: application/xml" http://${joiner}:8001/admin/v1/server-config
-                  $AUTH_CURL -X POST -d "group=Default" --data-urlencode "server-config@./host.xml" -H "Content-type: application/x-www-form-urlencoded" -o cluster.zip http://${cluster}:8001/admin/v1/cluster-config
+                  $AUTH_CURL -X POST -d "group=ENode" --data-urlencode "server-config@./host.xml" -H "Content-type: application/x-www-form-urlencoded" -o cluster.zip http://${cluster}:8001/admin/v1/cluster-config
 
                   sleep 10s
 
