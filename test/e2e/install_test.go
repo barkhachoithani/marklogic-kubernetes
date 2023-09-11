@@ -1,36 +1,26 @@
 package e2e
 
 import (
-	"crypto/tls"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
 	"testing"
-	"time"
+	"github.com/marklogic/marklogic-kubernetes/test/common"
 
-	"github.com/gruntwork-io/terratest/modules/helm"
-	http_helper "github.com/gruntwork-io/terratest/modules/http-helper"
 	"github.com/gruntwork-io/terratest/modules/k8s"
-	"github.com/gruntwork-io/terratest/modules/random"
 	"github.com/stretchr/testify/assert"
 	"github.com/tidwall/gjson"
 	digestAuth "github.com/xinsnake/go-http-digest-auth-client"
 )
 
 func TestHelmInstall(t *testing.T) {
-	// Path to the helm chart we will test
-	helmChartPath, e := filepath.Abs("../../charts")
-	if e != nil {
-		t.Fatalf(e.Error())
-	}
-	imageRepo, repoPres := os.LookupEnv("dockerRepository")
-	imageTag, tagPres := os.LookupEnv("dockerVersion")
 	var resp *http.Response
 	var body []byte
 	var err error
+	var podName string
+	imageRepo, repoPres := os.LookupEnv("dockerRepository")
+	imageTag, tagPres := os.LookupEnv("dockerVersion")
 
 	if !repoPres {
 		imageRepo = "marklogic-centos/marklogic-server-centos"
@@ -42,53 +32,24 @@ func TestHelmInstall(t *testing.T) {
 		t.Logf("No imageTag variable present, setting to default value: " + imageTag)
 	}
 
-	namespaceName := "marklogic-" + strings.ToLower(random.UniqueId())
-	kubectlOptions := k8s.NewKubectlOptions("", "", namespaceName)
-	options := &helm.Options{
-		KubectlOptions: kubectlOptions,
-		SetValues: map[string]string{
-			"persistence.enabled":   "false",
-			"replicaCount":          "2",
-			"image.repository":      imageRepo,
-			"image.tag":             imageTag,
-			"logCollection.enabled": "false",
-		},
-	}
-
-	t.Logf("====Creating namespace: " + namespaceName)
-	k8s.CreateNamespace(t, kubectlOptions, namespaceName)
-
-	defer t.Logf("====Deleting namespace: " + namespaceName)
-	defer k8s.DeleteNamespace(t, kubectlOptions, namespaceName)
-
+	options := map[string]string{
+		"persistence.enabled":   "false",
+		"replicaCount":          "2",
+		"image.repository":      imageRepo,
+		"image.tag":             imageTag,
+		"logCollection.enabled": "false",
+}
 	t.Logf("====Installing Helm Chart")
 	releaseName := "test-install"
-	helm.Install(t, options, helmChartPath, releaseName)
 
-	tlsConfig := tls.Config{}
-	podName := releaseName + "-marklogic-0"
-	// wait until the pod is in Ready status
-	k8s.WaitUntilPodAvailable(t, kubectlOptions, podName, 10, 15*time.Second)
-	tunnel7997 := k8s.NewTunnel(kubectlOptions, k8s.ResourceTypePod, podName, 7997, 7997)
-	defer tunnel7997.Close()
-	tunnel7997.ForwardPort(t)
-	endpoint7997 := fmt.Sprintf("http://%s", tunnel7997.Endpoint())
+	defer t.Logf("====Deleting namespace: " + common.NamespaceName)
+	defer k8s.DeleteNamespace(t, common.KubectlOpt, common.NamespaceName)
 
-	// verify if 7997 health check endpoint returns 200
-	http_helper.HttpGetWithRetryWithCustomValidation(
-		t,
-		endpoint7997,
-		&tlsConfig,
-		10,
-		15*time.Second,
-		func(statusCode int, body string) bool {
-			return statusCode == 200
-		},
-	)
+	podName = common.HelmInstallFn(t, options, releaseName)
 
 	t.Log("====Testing Generated Random Password====")
 	secretName := releaseName + "-marklogic-admin"
-	secret := k8s.GetSecret(t, kubectlOptions, secretName)
+	secret := k8s.GetSecret(t, common.KubectlOpt, secretName)
 	passwordArr := secret.Data["password"]
 	password := string(passwordArr[:])
 	// the generated random password should have length of 10
@@ -98,7 +59,7 @@ func TestHelmInstall(t *testing.T) {
 	// the random generated username should have length of 11"
 	assert.Equal(t, 11, len(username))
 
-	tunnel8002 := k8s.NewTunnel(kubectlOptions, k8s.ResourceTypePod, podName, 8002, 8002)
+	tunnel8002 := k8s.NewTunnel(common.KubectlOpt, k8s.ResourceTypePod, podName, 8002, 8002)
 	defer tunnel8002.Close()
 	tunnel8002.ForwardPort(t)
 	endpointManage := fmt.Sprintf("http://%s/manage/v2", tunnel8002.Endpoint())
