@@ -174,6 +174,9 @@ pipeline {
         booleanParam(name: 'HC_TESTS', defaultValue: false, description: 'Run Hub Central E2E UI tests (takes about 3 hours)')
         booleanParam(name: 'IMAGE_SCAN', defaultValue: false, description: 'Find and scan dependent Docker images for security vulnerabilities')
         string(name: 'emailList', defaultValue: emailList, description: 'List of email for build notification', trim: true)
+        string(name: 'dockerReleaseVer', defaultValue: '1.1.2', description: 'Current Docker version. (e.g. 1.0.1)', trim: true)
+        choice(name: 'PREV_ML_VERSION', choices: '10.0\n9.0\n11.2', description: 'Previous MarkLogic version for MarkLogic upgrade tests')
+        string(name: 'prevDockerReleaseVer', defaultValue: '1.1.2', description: 'Previous Docker version for MarkLogic upgrade tests. (e.g. 1.0.1)', trim: true)
     }
 
     stages {
